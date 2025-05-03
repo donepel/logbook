@@ -24,7 +24,7 @@ def iniciar_aplicacion():
 def mostrar_menu_principal():
     """Muestra el menú principal y maneja las opciones"""
     opcion = 0
-    while opcion != 7:
+    while opcion != 8:
         imprimir_menu()
         
         try:
@@ -44,27 +44,29 @@ def imprimir_menu():
     print(f"{'*' * 40}{RESET}")
     print(f"{MAGENTA}1. Agregar contacto")
     print("2. Listar contactos")
-    print("3. Importar desde ADIF")
-    print("4. Exportar todo hacia ADIF")
-    print("5. Exportar entradas de hoy a ADIF")  # Nueva opción
-    print("6. Configurar estación")
-    print(f"7. Salir{RESET}")
+    print("3. Busqueda de contacto")
+    print("4. Importar desde ADIF")
+    print("5. Exportar todo hacia ADIF")
+    print("6. Exportar entradas de hoy a ADIF") 
+    print("7. Configurar estación")
+    print(f"8. Salir{RESET}")
 
 def manejar_opcion(opcion):
     """Dirige a la función correspondiente según la opción seleccionada"""
     acciones = {
         1: agregar_entrada,
         2: listar_entradas,
-        3: importar_adif,
-        4: exportar_adif,
-        5: exportar_hoy_adif,
-        6: configurar_estacion
+        3: buscar_entradas,
+        4: importar_adif,
+        5: exportar_adif,
+        6: exportar_hoy_adif,
+        7: configurar_estacion
         # La opción 7 es para salir y no necesita acción
     }
     
     if opcion in acciones:
         acciones[opcion]()
-    elif opcion != 7:  # Solo muestra error si no es 7 (salir)
+    elif opcion != 8:  # Solo muestra error si no es 8 (salir)
         print("\nOpción incorrecta, por favor intente nuevamente\n")
 
 #### FUNCIONES DE BASE DE DATOS ####
@@ -285,10 +287,79 @@ def mostrar_detalles_entrada(entry_id):
         ("Potencia", f"{entry[13]} W" if entry[13] else None),
         ("Grid Locator", entry[14])
     ]
-    
     for nombre, valor in detalles:
         if valor:
             print(f"{nombre}: {valor}")
+
+def buscar_entradas():
+    """Busca entradas en el logbook según criterios específicos"""
+    print("\n--- Buscar contactos ---")
+    print("Introduce los criterios de búsqueda (deja en blanco para omitir):")
+    
+    # Obtener criterios de búsqueda
+    contact_call = input("Indicativo del contacto: ").strip().upper()
+    band = input("Banda (ej. 20m, 40m): ").strip().lower()
+    mode = input("Modo (ej. SSB, CW, FT8): ").strip().upper()
+    date_from = input("Fecha desde (YYYY-MM-DD): ").strip()
+    date_to = input("Fecha hasta (YYYY-MM-DD): ").strip()
+    grid_locator = input("Grid Locator: ").strip().upper()
+    
+    # Construir consulta SQL
+    query = '''
+        SELECT id, timestamp, contact_call, band, mode, comment 
+        FROM logbook 
+        WHERE 1=1
+    '''
+    params = []
+    
+    if contact_call:
+        query += " AND contact_call LIKE ?"
+        params.append(f"%{contact_call}%")
+    
+    if band:
+        query += " AND band = ?"
+        params.append(band)
+    
+    if mode:
+        query += " AND mode = ?"
+        params.append(mode)
+    
+    if date_from:
+        query += " AND date(timestamp) >= ?"
+        params.append(date_from)
+    
+    if date_to:
+        query += " AND date(timestamp) <= ?"
+        params.append(date_to)
+    
+    if grid_locator:
+        query += " AND grid_locator LIKE ?"
+        params.append(f"%{grid_locator}%")
+    
+    query += " ORDER BY timestamp DESC"
+    
+    # Ejecutar consulta
+    with conexion_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        entries = cursor.fetchall()
+    
+    # Mostrar resultados
+    if not entries:
+        print("\nNo se encontraron contactos que coincidan con los criterios.")
+        return
+    
+    print(f"\n{MAGENTA}{'ID':<8} {'Fecha y Hora':<16} {'Estación':<20} {'Banda':<10} {'Modo':<10} {'Comentario':<40}{RESET}")
+    for entry in entries:
+        print(f"{entry[0]}. {entry[1]:<15} | {entry[2]:<10} | {entry[3]:<10} {entry[4]:<10} | {entry[5]}")
+    
+    # Opción para ver detalles
+    entry_id = input("\nIntroduce el ID para ver detalles (o Enter para continuar): ").strip()
+    if entry_id:
+        try:
+            mostrar_detalles_entrada(int(entry_id))
+        except ValueError:
+            print("ID no válido.")
 
 #### FUNCIONES ADIF ####
 def exportar_adif():
